@@ -1,281 +1,142 @@
-# vit.cpp
+# ggml
 
-Inference Vision Transformer (ViT) in plain C/C++ using ggml without any extra dependencies
+[Roadmap](https://github.com/users/ggerganov/projects/7) / [Manifesto](https://github.com/ggerganov/llama.cpp/discussions/205)
 
-## Description
+Tensor library for machine learning
 
-
-This project presents a standalone implementation of the well known Vision Transformer (ViT) model family, used in a broad spectrum of applications and SOTA models like Large Multimodal Models(LMM). The primary goal is to develop a C/C++ inference engine tailored for ViT models, utilizing [ggml](https://github.com/ggerganov/ggml) to enhance performance, particularly on edge devices. Designed to be both lightweight and self-contained, this implementation can be run across diverse platforms.
-
-<details>
-<summary>Table of Contents</summary>
-
-1. [Description](#Description)
-2. [Features](#features)
-3. [Vision Transformer Architecture](#vision-transformer-architecture)
-4. [Quick Example](#quick-example)
-5. [Convert PyTorch to GGUF](#convert-pytorch-to-gguf)
-6. [Build](#build)
-   - [Simple Build](#simple-build)
-   - [Per Device Optimizations](#per-device-optimizations)
-   - [OpenMP](#using-openmp)
-7. [Run](#run)
-8. [Benchmark against PyTorch](#benchmark-against-pytorch)
-   - [ViT Inference](#vit-inference)
-   - [Benchmark on Your Machine](#benchmark-on-your-machine)
-9. [Quantization](#quantization)
-10. [To-Do List](#to-do-list)
-</details>
-
+***Note that this project is under active development. \
+Some of the development is currently happening in the [llama.cpp](https://github.com/ggerganov/llama.cpp) and [whisper.cpp](https://github.com/ggerganov/whisper.cpp) repos***
 
 ## Features
 
-
-- Dependency-free and lightweight inference thanks to [ggml](https://github.com/ggerganov/ggml).
-- 4-bit, 5-bit and 8-bit quantization support.
-- Support for timm ViTs with different variants out of the box.
-
-An important aspect of using `vit.cpp` is that it has short startup times compared to common DL frameworks, which makes it suitable for serverless deployments where the cold start is an issue.
-
-## Vision Transformer architecture
-
-
-The implemented architecture is based on the original Vision Transformer from:
-  - [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929)
-
-<p align="center">
-  <img src="assets/image.png" alt="Vision Transformer overview" width="60%" height="auto">
-</p>
-<p align="center">
-  ViT architecture. Taken from the <a href="https://arxiv.org/abs/2010.11929">original paper</a>.
-</p>
-
-## Quick example
-
-
-<details>
-  <p align="center">
-    <img src="assets/magpie.jpeg" alt="example input" width="50%" height="auto">
-  </p>
-
-  <summary>See output</summary>
-  <pre>
-  $ ./bin/vit -t 4 -m ../ggml-model-f16.gguf -i ../assets/magpie.jpeg -k 5
-  main: seed = 1701176263
-  main: n_threads = 4 / 8
-  vit_model_load: loading model from &apos;../ggml-model-f16.gguf&apos; - please wait
-  vit_model_load: hidden_size            = 192
-  vit_model_load: num_hidden_layers      = 12
-  vit_model_load: num_attention_heads    = 3
-  vit_model_load: patch_size             = 16
-  vit_model_load: img_size               = 224
-  vit_model_load: num_classes            = 1000
-  vit_model_load: ftype                  = 1
-  vit_model_load: qntvr                  = 0
-  operator(): ggml ctx size =  11.13 MB
-  vit_model_load: ................... done
-  vit_model_load: model size =    11.04 MB / num tensors = 152
-  main: loaded image &apos;../assets/magpie.jpeg&apos; (500 x 470)
-  vit_image_preprocess: scale = 2.232143
-  processed, out dims : (224 x 224)
-
-
-  &gt; magpie : 0.87
-  &gt; goose : 0.02
-  &gt; toucan : 0.01
-  &gt; drake : 0.01
-  &gt; king penguin, Aptenodytes patagonica : 0.01
-
-
-  main:    model load time =    17.92 ms
-  main:    processing time =   146.96 ms
-  main:    total time      =   164.88 ms
-  </pre>
-</details>
-
-
-## Convert PyTorch to GGUF
-
-
-    # clone the repo recursively
-    git clone --recurse-submodules https://github.com/staghado/vit.cpp.git
-
-    cd vit.cpp
-
-    # install torch and timm
-    pip install torch timm
-
-    # list available models if needed; note that not all models are supported
-    python convert-pth-to-ggml.py --list
-
-    # convert the weights to gguf : vit tiny with patch size of 16 and an image 
-    # size of 384 pre-trained on ImageNet21k and fine-tuned on ImageNet1k
-    python convert-pth-to-ggml.py --model_name vit_tiny_patch16_384.augreg_in21k_ft_in1k --ftype 1
-
-> **Note:** You can also download the converted weights from [Hugging Face](https://huggingface.co/staghado/vit.cpp) directly.
-
-> ```wget https://huggingface.co/staghado/vit.cpp/blob/main/tiny-ggml-model-f16.gguf```
-
-
-## Build
-
-
-### Simple build
-
-
-    # build ggml and vit 
-    mkdir build && cd build
-    cmake .. && make -j4
-
-    # run inference
-    ./bin/vit -t 4 -m ../ggml-model-f16.gguf -i ../assets/tench.jpg
-
-The optimal number of threads to use depends on many factors and more is not always better. Usually using a number of threads equal to the number of available physical cores gives the best performance in terms of speed.
-
-### Per device optimizations
-
-
-Generate per-device instructions that work best for the given machine rather than using general CPU instructions.
-This can be done by specifying `-march=native` in the compiler flags.
-  * Multi-threading and vectorization
-  * Loop transformations(unrolling)
-
-#### For AMD host processors
-
-
-You can use a specialized compiler released by AMD to make full use of your specific processor's architecture.
-Read more here : [AMD Optimizing C/C++ and Fortran Compilers (AOCC)](https://www.amd.com/en/developer/aocc.html)
-
-You can follow the given instructions to install the AOCC compiler.
-
-Note : For my AMD Ryzen 7 3700U, the improvements were not very significant but for more recent processors there could be a gain in using a specialized compiler.
-
-### Using OpenMP
-
-
-Additionally compile with OpenMP by specifying the `-fopenmp` flag to the compiler in the CMakeLists file,
-allowing multithreaded runs. Make sure to also enable multiple threads when running, e.g.:
-
-    OMP_NUM_THREADS=4 ./bin/vit -t 4 -m ../ggml-model-f16.bin -i ../assets/tench.jpg
-
-## Run
-
-
-    usage: ./bin/vit [options]
-
-    options:
-      -h, --help              show this help message and exit
-      -s SEED, --seed SEED    RNG seed (default: -1)
-      -t N, --threads N       number of threads to use during computation (default: 4)
-      -m FNAME, --model FNAME model path (default: ../ggml-model-f16.bin)
-      -i FNAME, --inp FNAME   input file (default: ../assets/tench.jpg)
-      -k N, --topk N          top k classes to print (default: 5)
-      -e FLOAT, --epsilon     epsilon (default: 0.000001)
-
-
-## Benchmark against PyTorch
-
-
-First experiments on Apple M1 show inference speedups(up to 6x faster for base model) compared to native PyTorch inference. 
-
-### ViT inference
-
-
-You can efficiently run ViT inference on the CPU.
-Memory requirements and inference speed on AMD Ryzen 7 3700U(4 cores, 8 threads) for both native PyTorch and `vit.cpp`. 
-Using 4 threads gives better results for my machine. The reported results of inference speed correspond to 10 runs averages for both PyTorch and `vit.cpp`.
-
-| Model  | Max Mem(PyTorch)  | Max Mem            | Speed(PyTorch) | Speed          |
-| :----: | :-----------: | :------------: | :------------: | :------------: |
-| tiny   | ~780 MB       | **~20 MB**     | 431 ms         | **120 ms**     |
-| small  | ~965 MB       | **~52 MB**     | 780 ms         | **463 ms**     |
-| base   | ~1.61 GB      | **~179 MB**    | 2393 ms        | **1441 ms**    |
-| large  | ~3.86 GB      | **~597 MB**    | 8151 ms        | **4892 ms**    |
-
-> **Note:** The models used are of the form `vit_{size}_patch16_224.augreg_in21k_ft_in1k`.
-
-### Benchmark on your machine
-
-
-In order to test the inference speed on your machine, you can run the following scripts:
-
-    chmod +x scripts/benchmark.*
-
-    # install memory_profiler & threadpoolctl
-    pip install memory_profiler threadpoolctl
-
-    # run the benchmark of PyTorch
-    python scripts/benchmark.py
-
-    # run the benchmark of vit.cpp for non-qunatized model
-    ./scripts/benchmark.sh
-
-    # to run the benchamrk for qunatized models; 4 threads and quantize flag
-    ./scripts/benchmark.sh 4 1
-
-Both scripts use 4 threads by default. In Python, the `threadpoolctl` library is used to limit the number of threads used by PyTorch.
-
-## Quantization
-
-
-`vit.cpp` supports many quantization strategies from ggml such as q4_0, q4_1, q5_0, q5_1 and q8_0 types.
-You can quantize a model in F32 (the patch embedding is in F16) to one of these types by using the `./bin/quantize` binary. 
-```
-usage: ./bin/quantize /path/to/ggml-model-f32.gguf /path/to/ggml-model-quantized.gguf type                              
-  type = 2 - q4_0                                                                                                       
-  type = 3 - q4_1                                                                                                       
-  type = 6 - q5_0                                                                                                       
-  type = 7 - q5_1                                                                                                       
-  type = 8 - q8_0                                                                                                       
+- Written in C
+- 16-bit float support
+- Integer quantization support (4-bit, 5-bit, 8-bit, etc.)
+- Automatic differentiation
+- ADAM and L-BFGS optimizers
+- Optimized for Apple Silicon
+- On x86 architectures utilizes AVX / AVX2 intrinsics
+- On ppc64 architectures utilizes VSX intrinsics
+- No third-party dependencies
+- Zero memory allocations during runtime
+
+## Updates
+
+- [X] Example of GPT-2 inference [examples/gpt-2](https://github.com/ggerganov/ggml/tree/master/examples/gpt-2)
+- [X] Example of GPT-J inference [examples/gpt-j](https://github.com/ggerganov/ggml/tree/master/examples/gpt-j)
+- [X] Example of Whisper inference [examples/whisper](https://github.com/ggerganov/ggml/tree/master/examples/whisper)
+- [X] Support 4-bit integer quantization https://github.com/ggerganov/ggml/pull/27
+- [X] Example of Cerebras-GPT inference [examples/gpt-2](https://github.com/ggerganov/ggml/tree/master/examples/gpt-2)
+- [ ] Example of FLAN-T5 inference https://github.com/ggerganov/ggml/pull/12
+- [X] Example of LLaMA inference [ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [X] Example of LLaMA training [ggerganov/llama.cpp/examples/baby-llama](https://github.com/ggerganov/llama.cpp/tree/master/examples/baby-llama)
+- [X] Example of Falcon inference [cmp-nct/ggllm.cpp](https://github.com/cmp-nct/ggllm.cpp)
+- [X] Example of BLOOM inference [NouamaneTazi/bloomz.cpp](https://github.com/NouamaneTazi/bloomz.cpp)
+- [X] Example of RWKV inference [saharNooby/rwkv.cpp](https://github.com/saharNooby/rwkv.cpp)
+- [X] Example of SAM inference [examples/sam](https://github.com/ggerganov/ggml/tree/master/examples/sam)
+- [X] Idea for GPU support: https://github.com/ggerganov/llama.cpp/discussions/915
+- [X] Example of StableLM (GPT-NeoX) inference [examples/gpt-neox](https://github.com/ggerganov/ggml/tree/master/examples/gpt-neox)
+- [X] Example of BERT inference [skeskinen/bert.cpp](https://github.com/skeskinen/bert.cpp)
+- [X] Example of 💫 StarCoder inference [examples/starcoder](https://github.com/ggerganov/ggml/tree/master/examples/starcoder)
+- [X] Example of MPT inference [examples/mpt](https://github.com/ggerganov/ggml/tree/master/examples/mpt)
+- [X] Example of Replit inference [examples/replit](https://github.com/ggerganov/ggml/tree/master/examples/replit)
+- [X] Example of BioGPT inference [PABannier/biogpt.cpp](https://github.com/PABannier/biogpt.cpp)
+- [X] Example of Encodec inference [PABannier/encodec.cpp](https://github.com/PABannier/encodec.cpp)
+- [X] Example of CLIP inference [monatis/clip.cpp](https://github.com/monatis/clip.cpp)
+- [X] Example of MiniGPT4 inference [Maknee/minigpt4.cpp](https://github.com/Maknee/minigpt4.cpp)
+- [X] Example of ChatGLM inference [li-plus/chatglm.cpp](https://github.com/li-plus/chatglm.cpp)
+- [X] Example of Stable Diffusion inference [leejet/stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp)
+- [X] Example of Qwen inference [QwenLM/qwen.cpp](https://github.com/QwenLM/qwen.cpp)
+- [X] Example of YOLO inference [examples/yolo](https://github.com/ggerganov/ggml/tree/master/examples/yolo)
+- [X] Example of ViT inference [staghado/vit.cpp](https://github.com/staghado/vit.cpp)
+
+## Whisper inference (example)
+
+With ggml you can efficiently run [Whisper](examples/whisper) inference on the CPU.
+
+Memory requirements:
+
+| Model  | Disk   | Mem     |
+| ---    | ---    | ---     |
+| tiny   |  75 MB | ~280 MB |
+| base   | 142 MB | ~430 MB |
+| small  | 466 MB | ~1.0 GB |
+| medium | 1.5 GB | ~2.6 GB |
+| large  | 2.9 GB | ~4.7 GB |
+
+## GPT inference (example)
+
+With ggml you can efficiently run [GPT-2](examples/gpt-2) and [GPT-J](examples/gpt-j) inference on the CPU.
+
+Here is how to run the example programs:
+
+```bash
+# Build ggml + examples
+git clone https://github.com/ggerganov/ggml
+cd ggml
+mkdir build && cd build
+cmake ..
+make -j4 gpt-2 gpt-j
+
+# Run the GPT-2 small 117M model
+../examples/gpt-2/download-ggml-model.sh 117M
+./bin/gpt-2 -m models/gpt-2-117M/ggml-model.bin -p "This is an example"
+
+# Run the GPT-J 6B model (requires 12GB disk space and 16GB CPU RAM)
+../examples/gpt-j/download-ggml-model.sh 6B
+./bin/gpt-j -m models/gpt-j-6B/ggml-model.bin -p "This is an example"
+
+# Install Python dependencies
+python3 -m pip install -r ../requirements.txt
+
+# Run the Cerebras-GPT 111M model
+# Download from: https://huggingface.co/cerebras
+python3 ../examples/gpt-2/convert-cerebras-to-ggml.py /path/to/Cerebras-GPT-111M/
+./bin/gpt-2 -m /path/to/Cerebras-GPT-111M/ggml-model-f16.bin -p "This is an example"
 ```
 
-For example, you can run the following to convert the model to q5_1:
+The inference speeds that I get for the different models on my 32GB MacBook M1 Pro are as follows:
 
-```shell
-./bin/quantize ../tiny-ggml-model-f16.gguf ../tiny-ggml-model-f16-quant.gguf 7
+| Model | Size  | Time / Token |
+| ---   | ---   | ---    |
+| GPT-2 |  117M |   5 ms |
+| GPT-2 |  345M |  12 ms |
+| GPT-2 |  774M |  23 ms |
+| GPT-2 | 1558M |  42 ms |
+| ---   | ---   | ---    |
+| GPT-J |    6B | 125 ms |
+
+For more information, checkout the corresponding programs in the [examples](examples) folder.
+
+## Using Metal (only with GPT-2)
+
+For GPT-2 models, offloading to GPU is possible. Note that it will not improve inference performances but will reduce power consumption and free up the CPU for other tasks.
+
+To enable GPU offloading on MacOS:
+
+```bash
+cmake -DGGML_METAL=ON -DBUILD_SHARED_LIBS=Off ..
+
+# add -ngl 1
+./bin/gpt-2 -t 4 -ngl 100 -m models/gpt-2-117M/ggml-model.bin -p "This is an example"
 ```
 
-Then you can use `tiny-ggml-model-f16-quant.gguf` just like the model in F16.
+## Using cuBLAS
 
-### Results
+```bash
+# fix the path to point to your CUDA compiler
+cmake -DGGML_CUBLAS=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.1/bin/nvcc ..
+```
 
-Here are the benchmarks for the different models and quantizations on my machine: 
-For accurate estimation of run times, these benchmarks were run 100 times each.  
+## Using clBLAST
 
-| Model  | Quantization | Speed (ms)    | Mem (MB)          |
-| :----: | :----------: | :-----------: | :---------------: |
-|   tiny |     q4_0     |    105 ms     |   12 MB        |
-|   tiny |     q4_1     |    97 ms     |   12 MB        |
-|   tiny |     q5_0     |    116 ms     |   13 MB        |
-|   tiny |     q5_1     |    112 ms     |   13 MB        |
-|   tiny |     q8_0     |    90 ms     |   15 MB        |
-|   small |     q4_0     |    240 ms     |   23 MB        |
-|   small |     q4_1     |    224 ms     |   24 MB        |
-|   small |     q5_0     |    288 ms     |   25 MB        |
-|   small |     q5_1     |    277 ms     |   27 MB        |
-|   small |     q8_0     |    228 ms     |   33 MB        |
-|   base |     q4_0     |    704 ms     |   61 MB        |
-|   base |     q4_1     |    626 ms     |   66 MB        |
-|   base |     q5_0     |    851 ms     |   71 MB        |
-|   base |     q5_1     |    806 ms     |   76 MB        |
-|   base |     q8_0     |    659 ms     |   102 MB        |
-|   large |     q4_0     |    2189 ms     |   181 MB        |
-|   large |     q4_1     |    1919 ms     |   199 MB        |
-|   large |     q5_0     |    2676 ms     |   217 MB        |
-|   large |     q5_1     |    2547 ms     |   235 MB        |
-|   large |     q8_0     |    1994 ms     |   325 MB        |
+```bash
+cmake -DGGML_CLBLAST=ON ..
+```
 
-## To-Do List
+## Resources
 
-
-- **Evaluate performance on ImageNet1k**: 
-
-  Run evaluation on ImageNet1k test set and analyze the performance of different quantization schemes.
-
-This project was highly inspired by the following projects:
-* [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
-* [llama.cpp](https://github.com/ggerganov/llama.cpp)
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=staghado/vit.cpp&type=Date)](https://star-history.com/#staghado/vit.cpp&Date)
+- [GGML - Large Language Models for Everyone](https://github.com/rustformers/llm/blob/main/crates/ggml/README.md): a description of the GGML format provided by the maintainers of the `llm` Rust crate, which provides Rust bindings for GGML
+- [marella/ctransformers](https://github.com/marella/ctransformers): Python bindings for GGML models.
+- [go-skynet/go-ggml-transformers.cpp](https://github.com/go-skynet/go-ggml-transformers.cpp): Golang bindings for GGML models
+- [smspillaz/ggml-gobject](https://github.com/smspillaz/ggml-gobject): GObject-introspectable wrapper for use of GGML on the GNOME platform.
