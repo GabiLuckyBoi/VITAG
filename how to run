@@ -1,0 +1,13 @@
+model:
+cd /home/almog/Documents/LabBig/vit.cpp/build
+./bin/vit -t 4 -m ../tinys.gguf -i ../assets/apple.jpg -k 5
+
+benchmark:
+source myenv/bin/activate
+cd /home/almog/Documents/LabBig/vit.cpp/
+./scripts/benchmark.sh #small analysis
+python scripts/benchmark.py #deep analysis
+
+
+vit_tiny_patch16_224.augreg_in21k_ft_in1k
+vit_tiny_patch16_224.augreg_in21k_ft_in1k
